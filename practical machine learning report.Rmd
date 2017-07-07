@@ -1,0 +1,120 @@
+---
+title: "Weight Lifting Analysis"
+author: "Christopher Lin"
+date: "7/7/2017"
+output: html_document
+---
+
+
+## Overview
+
+The objective of this project is to assess the quality of a particular motion when performing a weight-lifing exercise. In the experiment, six participants were asked to perform a dumbbell lifting exercise in five different ways. These ways are:
+* exactly according to the specification (Class A)
+* throwing the elbows to the front (Class B)
+* lifting the dumbbell only halfway (Class C)
+* lowering the dumbbell only halfway (Class D)
+* throwing the hips to the front (Class E)
+
+Using the data collected by accelerometers attached to the dumbbells and participants, is it possible to predict the quality of the activity (class A-E)?
+
+
+## Data Loading and Processing
+
+### Loading
+
+First, we load in the required R packages. We then download the datasets which can found at
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r message=FALSE}
+library(caret)
+library(gbm)
+library(randomForest)
+library(knitr)
+library(plyr)
+```
+
+```{r}
+training = read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+testing = read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+dim(training)
+dim(testing)
+```
+
+Both datasets have 160 columns, and the training set has 19622 rows while the testing set has 20 rows. The 20 rows in the test set are what we will be testing our model against for the course quiz. The `classe` field is what we are trying to predict.
+
+### Processing
+
+There are many variables included in the dataset, and a quick look through the data makes it obvious that not all of them are essential to determining the quality of activity. We are going to remove fields with many missing values since they do not have enough information to help the prediction. We are also removing the first 7 fields because they do not provide any relevant information with regards to the activity type.
+
+```{r}
+training = training[, colSums(is.na(training)) <=.4*dim(training)[1]]
+testing = testing[, colSums(is.na(testing)) <=.4*dim(testing)[1]]
+
+training = training[, -c(1:7)]
+testing = testing[, -c(1:7)]
+```
+
+Now that we have processed the data, we will split it into a train and test set in order to build a model. Note that the existing test set is meant for prediction while the test set we will create is meant for model validation.
+
+```{r}
+set.seed(1002)
+inTrain = createDataPartition(training$classe, p=0.6, list=FALSE)
+trainset = training[inTrain, ]
+testset = training[-inTrain, ]
+```
+
+## Modeling
+
+We will use random forest and gradient boosted model to run our predictions. These models tended to have good results based on prior experience, so I tend to try these first. For both models, we use k-fold cross validation which can be seen in the `trControl` field with $k = 5$. 
+
+### Random Forest
+```{r}
+rfmodel = train(classe ~ ., data = trainset, method = "rf", 
+               trControl = trainControl(method = "cv", number = 5))
+
+print(rfmodel, digits = 3)
+
+rfPredict = predict(rfmodel, testset)
+rfConf = confusionMatrix(testset$classe, rfPredict)
+rfConf$table
+rfConf$overall[1]
+```
+
+The overall accuracy is 99.2%, which is very impressive.
+
+### Gradient Boosting
+```{r}
+gbmodel = train(classe ~ ., data = trainset, method = "gbm", verbose = FALSE, 
+                trControl = trainControl(method = "cv", number = 5))
+
+print(gbmodel, digits = 3)
+
+gbPredict = predict(gbmodel, testset)
+gbConf = confusionMatrix(testset$classe, gbPredict)
+gbConf$table
+gbConf$overall[1]
+```
+
+The overall accuracy is 96.1% which is lower than the accuracy for random forest, but still very good.
+
+### Out of sample error
+
+random forest: 100 - 99.2 = 0.8%
+gradient boost: 100 - 96.1 = 3.9%
+
+
+## Prediction
+
+Now we will test on the 20 samples that are provided in the testing data set
+
+```{r}
+predict(rfmodel, testing)
+predict(gbmodel, testing)
+```
+
+Both models give the same output.
+
+
+
